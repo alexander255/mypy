@@ -168,19 +168,25 @@ class FindModuleCache:
 
     def _find_module_non_stub_helper(self, components: List[str],
                                      pkg_dir: str) -> Union[OnePackageDir, ModuleNotFoundReason]:
-        plausible_match = False
+        plausible_match = None  # type: Optional[Tuple[str, OnePackageDir]]
         dir_path = pkg_dir
         for index, component in enumerate(components):
             dir_path = os.path.join(dir_path, component)
             if self.fscache.isfile(os.path.join(dir_path, 'py.typed')):
                 return os.path.join(pkg_dir, *components[:-1]), index == 0
-            elif not plausible_match and (self.fscache.isdir(dir_path)
-                                          or self.fscache.isfile(dir_path + ".py")):
-                plausible_match = True
-        if plausible_match:
-            return ModuleNotFoundReason.FOUND_WITHOUT_TYPE_HINTS
-        else:
+            elif not plausible_match and (
+                     self.fscache.isfile(os.path.join(dir_path, '__init__.py'))
+                     or self.fscache.isfile(dir_path + ".py")):
+                plausible_match = (
+                    '.'.join(components[:(index + 1)]),
+                    (os.path.join(pkg_dir, *components[:-1]), index == 0)
+                )
+        if not plausible_match:
             return ModuleNotFoundReason.NOT_FOUND
+        elif self.options and plausible_match[0] in self.options.pep561_override:
+            return plausible_match[1]
+        else:
+            return ModuleNotFoundReason.FOUND_WITHOUT_TYPE_HINTS
 
     def _update_ns_ancestors(self, components: List[str], match: Tuple[str, bool]) -> None:
         path, verify = match
